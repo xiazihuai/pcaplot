@@ -1,0 +1,39 @@
+.chart-canvas-wrapper {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.chart-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.chart-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #fafafa;
+}
+
+.placeholder-content {
+  text-align: center;
+  color: #999;
+}
+
+.placeholder-content p {
+  margin: 12px 0 0;
+  font-size: 15px;
+  color: #888;
+}
+
+.placeholder-hint {
+  font-size: 12px !important;
+  color: #bbb !important;
+}

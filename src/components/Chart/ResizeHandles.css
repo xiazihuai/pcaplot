@@ -1,0 +1,30 @@
+.resize-handles-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.resize-handle {
+  position: absolute;
+  pointer-events: auto;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 2px solid #1976d2;
+  border-radius: 2px;
+  z-index: 2;
+}
+
+/* 角手柄 */
+.handle-nw { top: -5px; left: -5px; }
+.handle-ne { top: -5px; right: -5px; }
+.handle-se { bottom: -5px; right: -5px; }
+.handle-sw { bottom: -5px; left: -5px; }
+
+/* 边中点手柄 */
+.handle-n  { top: -5px; left: calc(50% - 5px); }
+.handle-s  { bottom: -5px; left: calc(50% - 5px); }
+.handle-e  { top: calc(50% - 5px); right: -5px; }
+.handle-w  { top: calc(50% - 5px); left: -5px; }

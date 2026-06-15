@@ -1,0 +1,87 @@
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog-box {
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  max-width: 420px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.encoding-dialog h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  color: #333;
+}
+
+.dialog-desc {
+  font-size: 13px;
+  color: #888;
+  margin: 0 0 16px 0;
+  line-height: 1.5;
+}
+
+.encoding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.encoding-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.encoding-option:hover {
+  background: #f5f5f5;
+}
+
+.encoding-option.selected {
+  border-color: #1976d2;
+  background: #e3f2fd;
+}
+
+.encoding-option input[type="radio"] {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.encoding-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  min-width: 130px;
+}
+
+.encoding-desc {
+  font-size: 11px;
+  color: #999;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-actions .toolbar-btn {
+  padding: 8px 16px;
+}

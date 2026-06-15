@@ -1,0 +1,27 @@
+{
+  "name": "pcaplot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "轻量、安全、可高度定制的 PCA 结果可视化工具",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run sync-version && vite build",
+    "preview": "vite preview",
+    "sync-version": "node scripts/sync-version.js",
+    "release": "npm version patch && npm run build"
+  },
+  "dependencies": {
+    "echarts": "^5.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}
