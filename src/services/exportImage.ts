@@ -198,8 +198,8 @@ async function exportSVG(
 
 /**
  * 在 Canvas 上手动绘制图例（位置相对于画布）
- * - 支持多列布局（legendStyle.columns）
- * - 支持 8 种分组形状
+ * - 从 DOM 读取每个 legend-item 精确位置，保证与显示一致
+ * - 形状从 store 读取正确绘制
  */
 function drawLegendOnCanvas(
   ctx: CanvasRenderingContext2D,
@@ -213,75 +213,87 @@ function drawLegendOnCanvas(
   const styleState = useStyleStore.getState();
   const groupColorOverrides = styleState.groupColorOverrides;
   const groupShapeOverrides = styleState.groupShapeOverrides;
-  const columns = styleState.legendStyle.columns || 1;
   if (groups.length === 0) return;
 
   const canvasRect = canvasEl.getBoundingClientRect();
   const legendRect = legendEl.getBoundingClientRect();
 
-  const lx = Math.round((legendRect.left - canvasRect.left) * pixelRatio);
-  const ly = Math.round((legendRect.top - canvasRect.top) * pixelRatio);
-  const lw = Math.round(legendRect.width * pixelRatio);
-  const lh = Math.round(legendRect.height * pixelRatio);
+  const lx = (legendRect.left - canvasRect.left) * pixelRatio;
+  const ly = (legendRect.top - canvasRect.top) * pixelRatio;
+  const lw = legendRect.width * pixelRatio;
+  const lh = legendRect.height * pixelRatio;
 
   // 裁剪检查
   if (lx + lw <= 0 || ly + lh <= 0 || lx >= ctx.canvas.width || ly >= ctx.canvas.height) return;
 
-  const padX = Math.round(10 * pixelRatio);
-  const padY = Math.round(10 * pixelRatio);
-  const radius = Math.round(6 * pixelRatio);
-  const itemH = Math.round(22 * pixelRatio);
-  const dotR = Math.round(5 * pixelRatio);
-  const itemFontSize = Math.round(13 * pixelRatio);
-  const textGap = Math.round(6 * pixelRatio);
+  // 读取 DOM 样式绘制背景
+  const legendStyle = getComputedStyle(legendEl);
+  const bgColor = legendStyle.backgroundColor || 'rgba(255,255,255,0.92)';
+  const borderColor = legendStyle.borderColor || '#dddddd';
+  const borderWidth = parseFloat(legendStyle.borderWidth) * pixelRatio || 1 * pixelRatio;
+  const borderRadius = parseFloat(legendStyle.borderRadius) * pixelRatio || 6 * pixelRatio;
 
-  // 背景圆角矩形
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-  ctx.strokeStyle = '#dddddd';
-  ctx.lineWidth = 1 * pixelRatio;
-  roundRect(ctx, lx, ly, lw, lh, radius);
+  ctx.fillStyle = bgColor;
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = borderWidth;
+  roundRect(ctx, lx, ly, lw, lh, borderRadius);
   ctx.fill();
   ctx.stroke();
 
-  // 计算列宽
-  const contentW = lw - 2 * padX;
-  const colWidth = contentW / columns;
-
-  for (let i = 0; i < groups.length; i++) {
+  // 遍历每个 .legend-item，从 DOM 读取精确位置
+  const legendItems = legendEl.querySelectorAll('.legend-item');
+  for (let i = 0; i < legendItems.length; i++) {
+    const itemEl = legendItems[i] as HTMLElement;
     const group = groups[i];
+    if (!group) continue;
+
     const color = groupColorOverrides[group.name] ?? group.color;
     const shapeId = groupShapeOverrides[group.name] ?? group.shape;
     const shapeDef = getShapeById(shapeId);
 
-    const col = i % columns;
-    const row = Math.floor(i / columns);
-    const itemX = lx + padX + col * colWidth;
-    const itemY = ly + padY + row * itemH;
-    const dotX = itemX + dotR;
-    const dotY = itemY + itemH / 2;
+    // 从 DOM 读取 SVG 图标位置
+    const iconSvg = itemEl.querySelector('svg');
+    if (iconSvg) {
+      const iconRect = iconSvg.getBoundingClientRect();
+      const iconCx = ((iconRect.left + iconRect.right) / 2 - canvasRect.left) * pixelRatio;
+      const iconCy = ((iconRect.top + iconRect.bottom) / 2 - canvasRect.top) * pixelRatio;
+      const iconR = (Math.min(iconRect.width, iconRect.height) / 2) * pixelRatio;
 
-    // 绘制正确形状
-    ctx.fillStyle = color;
-    if (shapeDef) {
-      drawShapeOnCanvas(ctx, dotX, dotY, dotR, shapeDef);
-    } else {
-      // fallback: 圆形
-      ctx.beginPath();
-      ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = color;
+      if (shapeDef) {
+        drawShapeOnCanvas(ctx, iconCx, iconCy, iconR, shapeDef);
+      } else {
+        ctx.beginPath();
+        ctx.arc(iconCx, iconCy, iconR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 0.5 * pixelRatio;
+      ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-    ctx.lineWidth = 0.5 * pixelRatio;
-    ctx.stroke();
 
-    // 组名（在列内截断）
-    ctx.fillStyle = '#333333';
-    ctx.font = `${itemFontSize}px sans-serif`;
-    const textX = dotX + dotR + textGap;
-    const textY = dotY + dotR * 0.6;
-    const maxTextWidth = colWidth - dotR * 2 - textGap - Math.round(4 * pixelRatio);
-    const displayName = truncateText(ctx, group.name, maxTextWidth);
-    ctx.fillText(displayName, textX, textY);
+    // 从 DOM 读取文字位置（精确匹配显示）
+    const nameEl = itemEl.querySelector('.legend-item-name') as HTMLElement | null;
+    const inputEl = itemEl.querySelector('.legend-rename-input') as HTMLInputElement | null;
+    const displayName = inputEl ? inputEl.value : (nameEl?.textContent ?? group.name);
+
+    const textEl = (nameEl || inputEl) as HTMLElement | null;
+    if (textEl) {
+      const textRect = textEl.getBoundingClientRect();
+      const textStyles = getComputedStyle(textEl);
+      const textX = (textRect.left - canvasRect.left) * pixelRatio;
+      // Canvas baseline 对齐 DOM 底部
+      const textY = (textRect.bottom - canvasRect.top) * pixelRatio - 2 * pixelRatio;
+      const fontSize = parseFloat(textStyles.fontSize) * pixelRatio;
+      const fontFamily = textStyles.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'sans-serif';
+      const fontWeight = textStyles.fontWeight || 'normal';
+      const fontStyle = textStyles.fontStyle || 'normal';
+      const textColor = textStyles.color || '#333333';
+
+      ctx.fillStyle = textColor;
+      ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+      ctx.fillText(displayName, textX, textY);
+    }
   }
 }
 
@@ -374,33 +386,9 @@ function drawShapeOnCanvas(
 }
 
 /**
- * Canvas 文字截断（添加省略号）
- */
-function truncateText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number,
-): string {
-  if (maxWidth <= 0) return '';
-  const measured = ctx.measureText(text);
-  if (measured.width <= maxWidth) return text;
-  // 二分查找合适长度
-  let lo = 3, hi = text.length;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi + 1) / 2);
-    if (ctx.measureText(text.substring(0, mid) + '…').width <= maxWidth) {
-      lo = mid;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return text.substring(0, lo) + '…';
-}
-
-/**
  * 构建图例的 SVG 元素（位置相对于画布）
- * - 支持多列布局（legendStyle.columns）
- * - 支持 8 种分组形状
+ * - 从 DOM 读取每个 legend-item 精确位置，保证与显示一致
+ * - 形状从 store 读取正确绘制
  */
 function buildLegendAsSVG(
   canvasEl: HTMLElement,
@@ -413,54 +401,70 @@ function buildLegendAsSVG(
   const styleState = useStyleStore.getState();
   const groupColorOverrides = styleState.groupColorOverrides;
   const groupShapeOverrides = styleState.groupShapeOverrides;
-  const columns = styleState.legendStyle.columns || 1;
   if (groups.length === 0) return '';
 
   const canvasRect = canvasEl.getBoundingClientRect();
   const legendRect = legendEl.getBoundingClientRect();
 
-  const lx = Math.round((legendRect.left - canvasRect.left) * pixelRatio);
-  const ly = Math.round((legendRect.top - canvasRect.top) * pixelRatio);
-  const lw = Math.round(legendRect.width * pixelRatio);
-  const lh = Math.round(legendRect.height * pixelRatio);
+  const lx = (legendRect.left - canvasRect.left) * pixelRatio;
+  const ly = (legendRect.top - canvasRect.top) * pixelRatio;
+  const lw = legendRect.width * pixelRatio;
+  const lh = legendRect.height * pixelRatio;
 
   if (lx + lw <= 0 || ly + lh <= 0) return '';
 
-  const padX = Math.round(10 * pixelRatio);
-  const padY = Math.round(10 * pixelRatio);
-  const radius = Math.round(6 * pixelRatio);
-  const itemH = Math.round(22 * pixelRatio);
-  const dotR = Math.round(5 * pixelRatio);
-  const itemFontSize = Math.round(13 * pixelRatio);
-  const textGap = Math.round(6 * pixelRatio);
-
-  const contentW = lw - 2 * padX;
-  const colWidth = contentW / columns;
+  // 读取 DOM 样式
+  const legendStyles = getComputedStyle(legendEl);
+  const bgColor = legendStyles.backgroundColor || 'rgba(255,255,255,0.92)';
+  const borderColor = legendStyles.borderColor || '#dddddd';
+  const borderWidth = parseFloat(legendStyles.borderWidth) * pixelRatio || 1 * pixelRatio;
+  const borderRadius = parseFloat(legendStyles.borderRadius) * pixelRatio || 6 * pixelRatio;
 
   let svg = '';
   // 背景
-  svg += `  <rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" rx="${radius}" ry="${radius}" fill="rgba(255,255,255,0.92)" stroke="#dddddd" stroke-width="${1 * pixelRatio}" />\n`;
+  svg += `  <rect x="${lx}" y="${ly}" width="${lw}" height="${lh}" rx="${borderRadius}" ry="${borderRadius}" fill="${escapeXml(bgColor)}" stroke="${escapeXml(borderColor)}" stroke-width="${borderWidth}" />\n`;
 
-  for (let i = 0; i < groups.length; i++) {
+  // 遍历每个 .legend-item，从 DOM 读取精确位置
+  const legendItems = legendEl.querySelectorAll('.legend-item');
+  for (let i = 0; i < legendItems.length; i++) {
+    const itemEl = legendItems[i] as HTMLElement;
     const group = groups[i];
+    if (!group) continue;
+
     const color = groupColorOverrides[group.name] ?? group.color;
     const shapeId = groupShapeOverrides[group.name] ?? group.shape;
     const shapeDef = getShapeById(shapeId);
 
-    const col = i % columns;
-    const row = Math.floor(i / columns);
-    const itemX = lx + padX + col * colWidth;
-    const itemY = ly + padY + row * itemH;
-    const dotX = itemX + dotR;
-    const dotY = itemY + itemH / 2;
+    // 从 DOM 读取 SVG 图标位置
+    const iconSvg = itemEl.querySelector('svg');
+    if (iconSvg) {
+      const iconRect = iconSvg.getBoundingClientRect();
+      const iconCx = ((iconRect.left + iconRect.right) / 2 - canvasRect.left) * pixelRatio;
+      const iconCy = ((iconRect.top + iconRect.bottom) / 2 - canvasRect.top) * pixelRatio;
+      const iconR = (Math.min(iconRect.width, iconRect.height) / 2) * pixelRatio;
 
-    // 形状符号
-    svg += buildShapeSVG(dotX, dotY, dotR, color, shapeDef, pixelRatio);
+      svg += buildShapeSVG(iconCx, iconCy, iconR, color, shapeDef, pixelRatio);
+    }
 
-    // 组名（SVG 不支持文字截断，使用 clipPath 或省略号逻辑）
-    const textX = dotX + dotR + textGap;
-    const textY = dotY + dotR;
-    svg += `  <text x="${textX}" y="${textY}" font-family="sans-serif" font-size="${itemFontSize}" fill="#333333">${escapeXml(group.name)}</text>\n`;
+    // 从 DOM 读取文字位置（精确匹配显示）
+    const nameEl = itemEl.querySelector('.legend-item-name') as HTMLElement | null;
+    const inputEl = itemEl.querySelector('.legend-rename-input') as HTMLInputElement | null;
+    const displayName = inputEl ? inputEl.value : (nameEl?.textContent ?? group.name);
+
+    const textEl = (nameEl || inputEl) as HTMLElement | null;
+    if (textEl) {
+      const textRect = textEl.getBoundingClientRect();
+      const textStyles = getComputedStyle(textEl);
+      const textX = (textRect.left - canvasRect.left) * pixelRatio;
+      const textY = (textRect.bottom - canvasRect.top) * pixelRatio - 2 * pixelRatio;
+      const fontSize = parseFloat(textStyles.fontSize) * pixelRatio;
+      const fontFamily = textStyles.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'sans-serif';
+      const fontWeight = textStyles.fontWeight || 'normal';
+      const fontStyle = textStyles.fontStyle || 'normal';
+      const textColor = textStyles.color || '#333333';
+
+      svg += `  <text x="${textX}" y="${textY}" font-family="${escapeXml(fontFamily)}" font-size="${fontSize}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="${escapeXml(textColor)}">${escapeXml(displayName)}</text>\n`;
+    }
   }
 
   return svg;
