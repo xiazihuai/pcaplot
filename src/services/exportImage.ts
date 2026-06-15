@@ -3,6 +3,8 @@
 import * as echarts from 'echarts';
 import { useDataStore } from '../stores/useDataStore';
 import { useStyleStore } from '../stores/useStyleStore';
+import { getShapeById } from './shapeDefinitions';
+import type { ShapeDefinition } from './shapeDefinitions';
 import { logger } from '../utils/logger';
 
 const MODULE = 'exportImage';
@@ -196,6 +198,8 @@ async function exportSVG(
 
 /**
  * 在 Canvas 上手动绘制图例（位置相对于画布）
+ * - 支持多列布局（legendStyle.columns）
+ * - 支持 8 种分组形状
  */
 function drawLegendOnCanvas(
   ctx: CanvasRenderingContext2D,
@@ -206,7 +210,10 @@ function drawLegendOnCanvas(
   if (!legendEl) return;
 
   const groups = useDataStore.getState().groups;
-  const groupColorOverrides = useStyleStore.getState().groupColorOverrides;
+  const styleState = useStyleStore.getState();
+  const groupColorOverrides = styleState.groupColorOverrides;
+  const groupShapeOverrides = styleState.groupShapeOverrides;
+  const columns = styleState.legendStyle.columns || 1;
   if (groups.length === 0) return;
 
   const canvasRect = canvasEl.getBoundingClientRect();
@@ -226,6 +233,7 @@ function drawLegendOnCanvas(
   const itemH = Math.round(22 * pixelRatio);
   const dotR = Math.round(5 * pixelRatio);
   const itemFontSize = Math.round(13 * pixelRatio);
+  const textGap = Math.round(6 * pixelRatio);
 
   // 背景圆角矩形
   ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
@@ -235,34 +243,164 @@ function drawLegendOnCanvas(
   ctx.fill();
   ctx.stroke();
 
-  // 每个分组
+  // 计算列宽
+  const contentW = lw - 2 * padX;
+  const colWidth = contentW / columns;
+
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
     const color = groupColorOverrides[group.name] ?? group.color;
-    const itemY = ly + padY + i * itemH;
-    const dotX = lx + padX + dotR;
+    const shapeId = groupShapeOverrides[group.name] ?? group.shape;
+    const shapeDef = getShapeById(shapeId);
+
+    const col = i % columns;
+    const row = Math.floor(i / columns);
+    const itemX = lx + padX + col * colWidth;
+    const itemY = ly + padY + row * itemH;
+    const dotX = itemX + dotR;
     const dotY = itemY + itemH / 2;
 
-    // 圆点
+    // 绘制正确形状
     ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
-    ctx.fill();
+    if (shapeDef) {
+      drawShapeOnCanvas(ctx, dotX, dotY, dotR, shapeDef);
+    } else {
+      // fallback: 圆形
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.strokeStyle = 'rgba(0,0,0,0.15)';
     ctx.lineWidth = 0.5 * pixelRatio;
     ctx.stroke();
 
-    // 组名
+    // 组名（在列内截断）
     ctx.fillStyle = '#333333';
     ctx.font = `${itemFontSize}px sans-serif`;
-    const textX = dotX + dotR + Math.round(6 * pixelRatio);
+    const textX = dotX + dotR + textGap;
     const textY = dotY + dotR * 0.6;
-    ctx.fillText(group.name, textX, textY);
+    const maxTextWidth = colWidth - dotR * 2 - textGap - Math.round(4 * pixelRatio);
+    const displayName = truncateText(ctx, group.name, maxTextWidth);
+    ctx.fillText(displayName, textX, textY);
   }
 }
 
 /**
+ * 在 Canvas 上绘制形状符号（中心点定位）
+ */
+function drawShapeOnCanvas(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  shape: ShapeDefinition,
+): void {
+  ctx.beginPath();
+  switch (shape.id) {
+    case 1: // 圆形
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    case 2: { // 正方形
+      const half = r * 0.75;
+      ctx.rect(cx - half, cy - half, half * 2, half * 2);
+      ctx.fill();
+      return;
+    }
+    case 3: { // 三角(上)
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.875, cy + r * 0.75);
+      ctx.lineTo(cx - r * 0.875, cy + r * 0.75);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    case 4: { // 三角(下)
+      ctx.moveTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.875, cy - r * 0.75);
+      ctx.lineTo(cx + r * 0.875, cy - r * 0.75);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    case 5: { // 菱形
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.875, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r * 0.875, cy);
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    case 6: { // 五角星
+      const outerR = r;
+      const innerR = r * 0.382;
+      for (let j = 0; j < 10; j++) {
+        const angle = (Math.PI / 2) * -1 + (Math.PI * j) / 5;
+        const radius = j % 2 === 0 ? outerR : innerR;
+        const px = cx + Math.cos(angle) * radius;
+        const py = cy - Math.sin(angle) * radius;
+        if (j === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    case 7: { // 六边形
+      for (let j = 0; j < 6; j++) {
+        const angle = (Math.PI / 2) * -1 + (Math.PI * j) / 3;
+        const px = cx + Math.cos(angle) * r;
+        const py = cy - Math.sin(angle) * r;
+        if (j === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      return;
+    }
+    case 8: { // 十字
+      const w = r * 0.35;
+      const h = r;
+      ctx.rect(cx - w, cy - h, w * 2, h * 2);  // 竖条
+      ctx.rect(cx - h, cy - w, h * 2, w * 2);  // 横条
+      ctx.fill();
+      return;
+    }
+    default:
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+  }
+}
+
+/**
+ * Canvas 文字截断（添加省略号）
+ */
+function truncateText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string {
+  if (maxWidth <= 0) return '';
+  const measured = ctx.measureText(text);
+  if (measured.width <= maxWidth) return text;
+  // 二分查找合适长度
+  let lo = 3, hi = text.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi + 1) / 2);
+    if (ctx.measureText(text.substring(0, mid) + '…').width <= maxWidth) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return text.substring(0, lo) + '…';
+}
+
+/**
  * 构建图例的 SVG 元素（位置相对于画布）
+ * - 支持多列布局（legendStyle.columns）
+ * - 支持 8 种分组形状
  */
 function buildLegendAsSVG(
   canvasEl: HTMLElement,
@@ -272,7 +410,10 @@ function buildLegendAsSVG(
   if (!legendEl) return '';
 
   const groups = useDataStore.getState().groups;
-  const groupColorOverrides = useStyleStore.getState().groupColorOverrides;
+  const styleState = useStyleStore.getState();
+  const groupColorOverrides = styleState.groupColorOverrides;
+  const groupShapeOverrides = styleState.groupShapeOverrides;
+  const columns = styleState.legendStyle.columns || 1;
   if (groups.length === 0) return '';
 
   const canvasRect = canvasEl.getBoundingClientRect();
@@ -291,6 +432,10 @@ function buildLegendAsSVG(
   const itemH = Math.round(22 * pixelRatio);
   const dotR = Math.round(5 * pixelRatio);
   const itemFontSize = Math.round(13 * pixelRatio);
+  const textGap = Math.round(6 * pixelRatio);
+
+  const contentW = lw - 2 * padX;
+  const colWidth = contentW / columns;
 
   let svg = '';
   // 背景
@@ -299,19 +444,92 @@ function buildLegendAsSVG(
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
     const color = groupColorOverrides[group.name] ?? group.color;
-    const itemY = ly + padY + i * itemH;
-    const dotX = lx + padX + dotR;
+    const shapeId = groupShapeOverrides[group.name] ?? group.shape;
+    const shapeDef = getShapeById(shapeId);
+
+    const col = i % columns;
+    const row = Math.floor(i / columns);
+    const itemX = lx + padX + col * colWidth;
+    const itemY = ly + padY + row * itemH;
+    const dotX = itemX + dotR;
     const dotY = itemY + itemH / 2;
 
-    // 圆点
-    svg += `  <circle cx="${dotX}" cy="${dotY}" r="${dotR}" fill="${color}" stroke="rgba(0,0,0,0.15)" stroke-width="${0.5 * pixelRatio}" />\n`;
-    // 组名
-    const textX = dotX + dotR + Math.round(6 * pixelRatio);
+    // 形状符号
+    svg += buildShapeSVG(dotX, dotY, dotR, color, shapeDef, pixelRatio);
+
+    // 组名（SVG 不支持文字截断，使用 clipPath 或省略号逻辑）
+    const textX = dotX + dotR + textGap;
     const textY = dotY + dotR;
     svg += `  <text x="${textX}" y="${textY}" font-family="sans-serif" font-size="${itemFontSize}" fill="#333333">${escapeXml(group.name)}</text>\n`;
   }
 
   return svg;
+}
+
+/**
+ * 构建单个形状的 SVG 元素
+ */
+function buildShapeSVG(
+  cx: number,
+  cy: number,
+  r: number,
+  color: string,
+  shape: ShapeDefinition | undefined,
+  pixelRatio: number,
+): string {
+  const strokeW = 0.5 * pixelRatio;
+  const stroke = `stroke="rgba(0,0,0,0.15)" stroke-width="${strokeW}"`;
+
+  if (!shape) {
+    return `  <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" ${stroke} />\n`;
+  }
+
+  const s = r / 8; // 从 16×16 坐标系缩放到目标尺寸
+
+  switch (shape.id) {
+    case 1: // 圆形
+      return `  <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" ${stroke} />\n`;
+    case 2: { // 正方形
+      const half = r * 0.75;
+      return `  <rect x="${cx - half}" y="${cy - half}" width="${half * 2}" height="${half * 2}" fill="${color}" ${stroke} />\n`;
+    }
+    case 3: // 三角(上)
+      return `  <polygon points="${cx},${cy - r} ${cx + r * 0.875},${cy + r * 0.75} ${cx - r * 0.875},${cy + r * 0.75}" fill="${color}" ${stroke} />\n`;
+    case 4: // 三角(下)
+      return `  <polygon points="${cx},${cy + r} ${cx - r * 0.875},${cy - r * 0.75} ${cx + r * 0.875},${cy - r * 0.75}" fill="${color}" ${stroke} />\n`;
+    case 5: // 菱形
+      return `  <polygon points="${cx},${cy - r} ${cx + r * 0.875},${cy} ${cx},${cy + r} ${cx - r * 0.875},${cy}" fill="${color}" ${stroke} />\n`;
+    case 6: { // 五角星 — 10 个顶点
+      const outerR = r;
+      const innerR = r * 0.382;
+      const pts: string[] = [];
+      for (let j = 0; j < 10; j++) {
+        const angle = -Math.PI / 2 + (Math.PI * j) / 5;
+        const radius = j % 2 === 0 ? outerR : innerR;
+        const px = cx + Math.cos(angle) * radius;
+        const py = cy + Math.sin(angle) * radius;
+        pts.push(`${px},${py}`);
+      }
+      return `  <polygon points="${pts.join(' ')}" fill="${color}" ${stroke} />\n`;
+    }
+    case 7: { // 六边形
+      const pts: string[] = [];
+      for (let j = 0; j < 6; j++) {
+        const angle = -Math.PI / 2 + (Math.PI * j) / 3;
+        const px = cx + Math.cos(angle) * r;
+        const py = cy + Math.sin(angle) * r;
+        pts.push(`${px},${py}`);
+      }
+      return `  <polygon points="${pts.join(' ')}" fill="${color}" ${stroke} />\n`;
+    }
+    case 8: { // 十字
+      const w = r * 0.35;
+      const h = r;
+      return `  <path d="M${cx - w},${cy - h} L${cx + w},${cy - h} L${cx + w},${cy - w} L${cx + h},${cy - w} L${cx + h},${cy + w} L${cx + w},${cy + w} L${cx + w},${cy + h} L${cx - w},${cy + h} L${cx - w},${cy + w} L${cx - h},${cy + w} L${cx - h},${cy - w} L${cx - w},${cy - w} Z" fill="${color}" ${stroke} />\n`;
+    }
+    default:
+      return `  <circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}" ${stroke} />\n`;
+  }
 }
 
 function escapeXml(s: string): string {
