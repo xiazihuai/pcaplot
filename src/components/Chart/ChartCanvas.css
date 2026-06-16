@@ -1,10 +1,7 @@
 .chart-canvas-wrapper {
   position: relative;
-  background: #ffffff;
-  border: 1px solid #ddd;
   border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .chart-container {

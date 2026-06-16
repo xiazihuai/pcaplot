@@ -165,6 +165,21 @@ export async function parseFile(file: File, encoding?: string): Promise<ParseRes
   const dataLines = hasHeader ? allLines.slice(1) : allLines;
   const headers = hasHeader ? firstLine : [];
 
+  // 检测是否为3D数据（有第5列及以上 = PC3）
+  // 抽样前几行检查是否有第5列且为数值
+  let hasPC3 = false;
+  const sampleCheck = Math.min(5, dataLines.length);
+  for (let i = 0; i < sampleCheck; i++) {
+    const cols = splitLine(dataLines[i], delimiter);
+    if (cols.length >= 5) {
+      const val = parseFloat(cols[4].trim());
+      if (!isNaN(val)) {
+        hasPC3 = true;
+      }
+    }
+  }
+  logger.debug(MODULE, '3D数据检测结果', { hasPC3 });
+
   // 解析数据行
   const rows: RawDataRow[] = [];
   const skippedRows: SkippedRowInfo[] = [];
@@ -187,6 +202,7 @@ export async function parseFile(file: File, encoding?: string): Promise<ParseRes
     const groupName = cols[1].trim() || '未分组';
     const pc1 = parseFloat(cols[2].trim());
     const pc2 = parseFloat(cols[3].trim());
+    const pc3 = hasPC3 && cols.length >= 5 ? parseFloat(cols[4].trim()) : 0;
 
     if (isNaN(pc1) || isNaN(pc2)) {
       skippedRows.push({
@@ -206,7 +222,7 @@ export async function parseFile(file: File, encoding?: string): Promise<ParseRes
       continue;
     }
 
-    rows.push({ sampleName, groupName, pc1, pc2, originalRowIndex: rowIndex });
+    rows.push({ sampleName, groupName, pc1, pc2, pc3, originalRowIndex: rowIndex });
   }
 
   logger.info(MODULE, '解析完成', {
@@ -216,6 +232,7 @@ export async function parseFile(file: File, encoding?: string): Promise<ParseRes
     delimiter,
     hasHeader,
     encoding: detected.encoding,
+    is3D: hasPC3,
   });
 
   if (skippedRows.length > 0) {
@@ -227,5 +244,5 @@ export async function parseFile(file: File, encoding?: string): Promise<ParseRes
     });
   }
 
-  return { rows, headers, skippedRows, delimiter, hasHeader, encoding: detected.encoding, encodingConfidence: detected.confidence };
+  return { rows, headers, skippedRows, delimiter, hasHeader, encoding: detected.encoding, encodingConfidence: detected.confidence, is3D: hasPC3 };
 }

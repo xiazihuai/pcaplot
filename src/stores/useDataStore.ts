@@ -21,16 +21,20 @@ interface DataStoreState {
 
   xAxisTitle: string;
   yAxisTitle: string;
+  zAxisTitle: string;
   originalHeaders: string[];
 
   fileName: string | null;
+
+  /** 是否为3D PCA模式 */
+  is3D: boolean;
 
   // 离群检测结果
   outlierResult: OutlierResult | null;
 
   importFile: (file: File, encoding?: string) => Promise<void>;
   updateGroupName: (oldName: string, newName: string) => void;
-  setAxisTitles: (titles: { x?: string; y?: string }) => void;
+  setAxisTitles: (titles: { x?: string; y?: string; z?: string }) => void;
   clearData: () => void;
   // 当配色方案变更时同步颜色
   syncGroupColors: (schemeId: ColorSchemeId) => void;
@@ -45,8 +49,10 @@ export const useDataStore = create<DataStoreState>((set, get) => ({
   skippedRows: [],
   xAxisTitle: 'PC1',
   yAxisTitle: 'PC2',
+  zAxisTitle: 'PC3',
   originalHeaders: [],
   fileName: null,
+  is3D: false,
   outlierResult: null,
 
   importFile: async (file: File, encoding?: string) => {
@@ -64,6 +70,7 @@ export const useDataStore = create<DataStoreState>((set, get) => ({
       groupName: r.groupName,
       pc1: r.pc1,
       pc2: r.pc2,
+      pc3: r.pc3,
     }));
 
     const uniqueGroups = [...new Set(parsedRows.map(r => r.groupName))].sort();
@@ -82,6 +89,7 @@ export const useDataStore = create<DataStoreState>((set, get) => ({
 
     const xTitle = result.hasHeader && result.headers.length >= 3 ? result.headers[2] : 'PC1';
     const yTitle = result.hasHeader && result.headers.length >= 4 ? result.headers[3] : 'PC2';
+    const zTitle = result.is3D && result.hasHeader && result.headers.length >= 5 ? result.headers[4] : 'PC3';
 
     set({
       rawRows: result.rows,
@@ -90,12 +98,19 @@ export const useDataStore = create<DataStoreState>((set, get) => ({
       skippedRows: result.skippedRows,
       xAxisTitle: xTitle,
       yAxisTitle: yTitle,
+      zAxisTitle: zTitle,
       originalHeaders: result.headers,
       fileName: file.name,
+      is3D: result.is3D,
     });
 
-    // 触发离群检测（使用默认95%置信度）
-    get().runOutlierDetection(0.95);
+    // 3D模式下跳过离群检测，2D模式下触发
+    if (!result.is3D) {
+      get().runOutlierDetection(0.95);
+    } else {
+      logger.info(MODULE, '3D模式下跳过离群检测');
+      set({ outlierResult: null });
+    }
 
     logger.info(MODULE, '数据导入完成', {
       fileName: file.name,
@@ -123,6 +138,7 @@ export const useDataStore = create<DataStoreState>((set, get) => ({
     set(state => ({
       xAxisTitle: titles.x !== undefined ? titles.x : state.xAxisTitle,
       yAxisTitle: titles.y !== undefined ? titles.y : state.yAxisTitle,
+      zAxisTitle: titles.z !== undefined ? titles.z : state.zAxisTitle,
     }));
   },
 
@@ -135,8 +151,10 @@ export const useDataStore = create<DataStoreState>((set, get) => ({
       skippedRows: [],
       xAxisTitle: 'PC1',
       yAxisTitle: 'PC2',
+      zAxisTitle: 'PC3',
       originalHeaders: [],
       fileName: null,
+      is3D: false,
     });
   },
 

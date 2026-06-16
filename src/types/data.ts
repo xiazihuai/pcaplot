@@ -6,6 +6,7 @@ export interface RawDataRow {
   groupName: string;
   pc1: number;
   pc2: number;
+  pc3: number;
   originalRowIndex: number;
 }
 
@@ -15,6 +16,7 @@ export interface ParsedDataRow {
   groupName: string;
   pc1: number;
   pc2: number;
+  pc3: number;
 }
 
 /** 分组信息（含自动分配的样式） */
@@ -46,4 +48,6 @@ export interface ParseResult {
   encoding: string;
   /** 编码置信度 'high' 表示确定，'low' 表示可能需要手动选择 */
   encodingConfidence: 'high' | 'low';
+  /** 是否3D PCA（5列及以上数据自动开启） */
+  is3D: boolean;
 }

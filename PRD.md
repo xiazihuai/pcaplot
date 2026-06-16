@@ -1,4 +1,4 @@
-# PCAplot 产品需求文档 (PRD) v2.0
+# PCAplot 产品需求文档 (PRD) v2.2 — 对应代码版本 v0.3.0
 
 ## 一、产品概述
 
@@ -35,19 +35,31 @@ PCAplot 是一款**纯前端的 PCA（主成分分析）结果可视化与 WYSIW
 
 ```
 PCAplot/
-├── src/
-│   ├── main.tsx / App.tsx / App.css
-│   ├── types/            # data.ts, chart.ts, export.ts, command.ts, ui.ts
-│   ├── stores/           # useDataStore, useStyleStore, useUIStore
-│   ├── services/         # parser, colorSchemes, shapeDefinitions, ellipse,
-│   │                       outlierDetection, exportImage, exportStyle, importStyle
-│   ├── components/
-│   │   ├── Toolbar/      # 顶部工具栏
-│   │   ├── Sidebar/      # 侧边栏（分组/坐标轴/全局样式/信息 四个标签页）
-│   │   ├── Chart/        # ECharts 画布 + ResizeHandles
-│   │   ├── Legend/       # 可拖拽图例组件
-│   │   └── common/       # NotificationToast, EncodingDialog
-│   └── utils/            # logger（分级日志系统）
+├── index.html / package.json / tsconfig.json / vite.config.ts
+├── .gitignore / CHANGELOG.md / PRD.md / PLAN.md
+├── .github/workflows/deploy.yml   # GitHub Pages 自动部署
+├── sample_data.csv
+├── scripts/
+│   └── sync-version.js            # 从 package.json 同步版本号到源码
+├── public/
+│   └── favicon.svg
+└── src/
+    ├── main.tsx / App.tsx / App.css / vite-env.d.ts
+    ├── types/            # data.ts, chart.ts, export.ts, command.ts, ui.ts
+    ├── stores/           # useDataStore, useStyleStore（含命令模式 undo/redo）, useUIStore
+    ├── services/         # parser, colorSchemes, shapeDefinitions, ellipse,
+    │                       outlierDetection, exportImage, exportStyle, importStyle
+    ├── components/
+    │   ├── Toolbar/      # 顶部工具栏（导入、导出、撤销/重做、适应窗口、重置）
+    │   ├── Sidebar/      # 侧边栏（分组/坐标轴/全局样式/信息 四个标签页）
+    │   ├── Chart/        # ChartCanvas + chartOptions + ResizeHandles
+    │   ├── Legend/       # CustomLegend 可拖拽图例组件
+    │   └── common/       # NotificationToast, EncodingDialog
+    ├── utils/
+    │   └── logger.ts     # 分级日志系统（环形缓冲）
+    └── constants/
+        ├── defaults.ts   # 所有默认值
+        └── version.ts    # APP_VERSION + BUILD_TIME（构建时自动生成）
 ```
 
 ---
@@ -157,11 +169,11 @@ pca-canvas（画板，网格点背景，可设大小）
 
 - **位置**：独立于 PCA 主图，可自由拖拽移动
 - **显示控制**：全局显示/隐藏切换
-- **列数控制**：每行列数可设 1-10（1 = 单列竖向，2+ = 多列网格）
+- **列数控制**：每行列数可设 1-10（1 = 单列竖向，2+ = 多列网格，CSS Grid `auto` 列宽）
 - **重命名**：双击分组名可重命名
-- **形状显示**：每个图例项显示对应分组的颜色和形状图标
-- **无标题**：图例不显示"图例"标题文字
-- **导出可靠**：导出时通过 Canvas/SVG 手动绘制图例，100% 可靠
+- **形状显示**：每个图例项显示对应分组的颜色和形状图标（8 种形状与主图 ECharts symbol 路径精确一致）
+- **导出可靠**：导出时通过 Canvas/SVG 手动绘制图例。**从 DOM 读取每个 `.legend-item` 精确位置和样式**（getBoundingClientRect + getComputedStyle），100% 保证导出与显示一致
+- **无颜色选择器**：颜色修改统一在侧边栏分组面板中完成
 
 ---
 
@@ -237,7 +249,35 @@ pca-canvas（画板，网格点背景，可设大小）
 
 ---
 
-## 四、数据流
+## 四、关键类型
+
+图例、画布维度和画板类型如下（当前代码实现）：
+
+```typescript
+// 图例样式（含多列支持）
+interface LegendStyle {
+  visible: boolean;
+  position: { x: number; y: number };
+  columns: number;  // 每行列数，1=单列，2+=多列网格
+}
+
+// PCA 主图尺寸与在画板中的偏移
+interface ChartDimensions {
+  width: number;
+  height: number;
+  lockAspectRatio: boolean;
+  offsetX: number;  // 主图在画板中的 X 偏移
+  offsetY: number;  // 主图在画板中的 Y 偏移
+}
+
+// 画板尺寸（网格点背景）
+interface CanvasSize {
+  width: number;
+  height: number;
+}
+```
+
+## 五、数据流
 
 ```
 导入文件 → parser（编码检测→分隔符检测→表头检测→校验）
@@ -250,21 +290,21 @@ pca-canvas（画板，网格点背景，可设大小）
 
 ---
 
-## 五、基础设施
+## 六、基础设施
 
-### 5.1 日志系统
+### 6.1 日志系统
 
 - 分级日志（DEBUG/INFO/WARN/ERROR/FATAL）
 - 内存环形缓冲（开发 1000 条 / 生产 500 条）
 - 关键模块埋点（parser、store、chart、export、legend）
 
-### 5.2 版本管理
+### 6.2 版本管理
 
 - SemVer 版本号（MAJOR.MINOR.PATCH）
 - package.json → sync-version.js → version.ts 自动同步
 - 导出文件携带版本号，导入时检查兼容性
 
-### 5.3 Toast 通知
+### 6.3 Toast 通知
 
 - 工具栏右侧弹出消息
 - 文件导入、导出、编辑操作均有反馈
@@ -272,16 +312,28 @@ pca-canvas（画板，网格点背景，可设大小）
 
 ---
 
-## 六、启动与构建
+### 6.4 部署
 
-```bash
-npm run dev      # 开发服务器 http://localhost:5173
-npm run build    # 生产构建 → dist/
-```
+项目已配置 GitHub Pages 自动部署（`.github/workflows/deploy.yml`）：
+- 每次 `git push` 到 master 分支自动触发构建部署
+- 生产地址：`https://<用户名>.github.io/pcaplot/`
+- 使用 `actions/configure-pages@v4`（`enablement: true`）+ `actions/deploy-pages@v4`
 
 ---
 
-## 七、数据文件格式示例
+## 七、启动与构建
+
+```bash
+npm run dev      # 开发服务器 http://localhost:5173/pcaplot/
+npm run build    # 生产构建 → dist/
+npm run preview  # 预览生产构建
+```
+
+部署后直接访问 `https://<用户名>.github.io/pcaplot/` 即可使用。
+
+---
+
+## 八、数据文件格式示例
 
 ```csv
 SampleName,Group,PC1,PC2
@@ -297,3 +349,33 @@ Sample4,Treatment,-0.9,3.1
 | 第 2 列 | 分组名称 | 是 |
 | 第 3 列 | PC1 数值 | 是 |
 | 第 4 列 | PC2 数值 | 是 |
+
+---
+
+## 九、尚未实现
+
+| 功能 | 说明 |
+|------|------|
+| Tauri 桌面打包 | `src-tauri/` 待搭建 |
+| 原生文件对话框 | 依赖 Tauri |
+| CSP 安全策略 | 生产环境安全加固 |
+| 单元测试 | parser, ellipse, colorSchemes, outlierDetection |
+| 安装包 < 50MB | 桌面打包产物优化 |
+
+---
+
+## 十、默认值速查
+
+| 设置 | 默认值 |
+|------|--------|
+| 画板尺寸 | 1200 × 900 px |
+| PCA 主图尺寸 | 800 × 600 px |
+| 图表偏移 | X: 60, Y: 40 |
+| 配色方案 | tableau10 |
+| 全局点大小 | 8 px |
+| 全局点透明度 | 0.85 |
+| 图例位置 | (24, 8) |
+| 图例列数 | 1 |
+| 背景 | white |
+| 图表标题 | "PCA Plot" |
+| 撤销栈 | 50 步 |

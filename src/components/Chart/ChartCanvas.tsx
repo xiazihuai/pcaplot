@@ -1,10 +1,11 @@
 // ECharts 图表画布组件 — PCA 主图，可在画布中拖拽移动
 import { useEffect, useRef, useCallback } from 'react';
 import * as echarts from 'echarts';
+import 'echarts-gl';  // 注册 3D 组件 (scatter3D, grid3D, xAxis3D, etc.)
 import { useDataStore } from '../../stores/useDataStore';
 import { useStyleStore } from '../../stores/useStyleStore';
 import { useUIStore } from '../../stores/useUIStore';
-import { buildEChartsOption } from './chartOptions';
+import { buildEChartsOption, build3DEChartsOption } from './chartOptions';
 import ResizeHandles from './ResizeHandles';
 import { logger } from '../../utils/logger';
 import './ChartCanvas.css';
@@ -23,6 +24,8 @@ export default function ChartCanvas() {
   const groups = useDataStore(s => s.groups);
   const xAxisTitle = useDataStore(s => s.xAxisTitle);
   const yAxisTitle = useDataStore(s => s.yAxisTitle);
+  const zAxisTitle = useDataStore(s => s.zAxisTitle);
+  const is3D = useDataStore(s => s.is3D);
 
   // 样式
   const globalPointSize = useStyleStore(s => s.globalPointSize);
@@ -55,14 +58,21 @@ export default function ChartCanvas() {
   // 初始化 ECharts
   useEffect(() => {
     if (!chartRef.current) return;
+    // 如果 is3D 状态变化，需要重新初始化实例
+    if (instanceRef.current) {
+      instanceRef.current.dispose();
+      instanceRef.current = null;
+      isReadyRef.current = false;
+    }
     if (!instanceRef.current) {
       instanceRef.current = echarts.init(chartRef.current, undefined, {
         width: chartWidth,
         height: chartHeight,
-        renderer: 'canvas',
+        // 3D 模式让 echarts-gl 选择 WebGL，2D 模式使用 canvas
+        renderer: is3D ? undefined : 'canvas',
       });
       isReadyRef.current = true;
-      logger.debug(MODULE, 'ECharts 实例已初始化');
+      logger.debug(MODULE, 'ECharts 实例已初始化', { is3D });
     }
     return () => {
       if (instanceRef.current) {
@@ -71,7 +81,7 @@ export default function ChartCanvas() {
         isReadyRef.current = false;
       }
     };
-  }, []);
+  }, [is3D]);
 
   // 绑定事件
   useEffect(() => {
@@ -84,29 +94,35 @@ export default function ChartCanvas() {
         seriesName?: string;
         event?: { event?: PointerEvent };
         color?: string;
-        data?: [number, number] | { sampleName?: string; groupName?: string; value?: [number, number]; color?: string; shape?: number };
+        data?: [number, number] | [number, number, number]
+          | { sampleName?: string; groupName?: string; value?: [number, number] | [number, number, number]; color?: string; shape?: number };
       };
       if (p.componentType === 'series' && p.data) {
         const nativeEvent = p.event?.event as PointerEvent | undefined;
         const isMulti = nativeEvent?.ctrlKey || nativeEvent?.metaKey || false;
         if (Array.isArray(p.data)) {
-          // 大数据模式：data 是 [x, y] 数组
+          // 数组数据模式（2D 大数据 或 3D）
+          const vals = p.data as number[];
           selectPoint({
-            sampleName: `${p.seriesName ?? '?'}_${p.data[0].toFixed(2)}`,
+            sampleName: `${p.seriesName ?? '?'}_${vals[0].toFixed(2)}`,
             groupName: p.seriesName ?? '?',
-            pc1: p.data[0],
-            pc2: p.data[1],
+            pc1: vals[0],
+            pc2: vals[1],
+            pc3: vals.length > 2 ? vals[2] : 0,
             color: p.color ?? '#999',
             shape: 1,
           }, isMulti);
         } else {
+          const d = p.data;
+          const vals = d.value ?? [0, 0];
           selectPoint({
-            sampleName: p.data.sampleName ?? '?',
-            groupName: p.data.groupName ?? '?',
-            pc1: p.data.value?.[0] ?? 0,
-            pc2: p.data.value?.[1] ?? 0,
-            color: p.data.color ?? '#999',
-            shape: p.data.shape ?? 1,
+            sampleName: d.sampleName ?? '?',
+            groupName: d.groupName ?? '?',
+            pc1: vals[0] ?? 0,
+            pc2: vals[1] ?? 0,
+            pc3: vals.length > 2 ? (vals[2] ?? 0) : 0,
+            color: d.color ?? '#999',
+            shape: d.shape ?? 1,
           }, isMulti);
         }
       }
@@ -130,44 +146,71 @@ export default function ChartCanvas() {
 
     const t0 = performance.now();
     const selectedSamples = selectedPoints.map(p => p.sampleName);
-    const option = buildEChartsOption({
-      data: parsedRows,
-      groups,
-      xAxisTitle,
-      yAxisTitle,
-      axisStyle,
-      gridStyle,
-      chartWidth,
-      chartHeight,
-      legendVisible,
-      globalPointSize,
-      globalPointOpacity,
-      tooltipFontFamily,
-      tooltipFontSize,
-      activeColorSchemeId,
-      groupColorOverrides,
-      groupShapeOverrides,
-      groupSizeOverrides,
-      groupOpacityOverrides,
-      background,
-      globalFontFamily,
-      globalFontSize,
-      globalFontBold,
-      globalFontItalic,
-      chartTitle,
-      selectedSamples,
-    });
 
-    instance.setOption(option, { notMerge: true });
+    if (is3D) {
+      const option = build3DEChartsOption({
+        data: parsedRows,
+        groups,
+        xAxisTitle,
+        yAxisTitle,
+        zAxisTitle,
+        chartWidth,
+        chartHeight,
+        globalPointSize,
+        globalPointOpacity,
+        tooltipFontFamily,
+        tooltipFontSize,
+        groupColorOverrides,
+        groupShapeOverrides,
+        groupSizeOverrides,
+        groupOpacityOverrides,
+        background,
+        chartTitle,
+        selectedSamples,
+      });
+      // 3D 模式下先清空再设置，确保 echarts-gl 完全刷新
+      instance.clear();
+      instance.setOption(option, { notMerge: true });
+    } else {
+      const option = buildEChartsOption({
+        data: parsedRows,
+        groups,
+        xAxisTitle,
+        yAxisTitle,
+        axisStyle,
+        gridStyle,
+        chartWidth,
+        chartHeight,
+        legendVisible,
+        globalPointSize,
+        globalPointOpacity,
+        tooltipFontFamily,
+        tooltipFontSize,
+        activeColorSchemeId,
+        groupColorOverrides,
+        groupShapeOverrides,
+        groupSizeOverrides,
+        groupOpacityOverrides,
+        background,
+        globalFontFamily,
+        globalFontSize,
+        globalFontBold,
+        globalFontItalic,
+        chartTitle,
+        selectedSamples,
+      });
+      instance.setOption(option, { notMerge: true });
+    }
+
     const elapsed = performance.now() - t0;
 
     if (parsedRows.length > 10000) {
       logger.warn(MODULE, `大数据量渲染: ${parsedRows.length} 点, 耗时 ${elapsed.toFixed(0)}ms`);
     } else {
-      logger.debug(MODULE, `渲染完成, 耗时 ${elapsed.toFixed(0)}ms`, { points: parsedRows.length });
+      logger.debug(MODULE, `渲染完成, 耗时 ${elapsed.toFixed(0)}ms`, { points: parsedRows.length, is3D });
     }
   }, [
-    parsedRows, groups, xAxisTitle, yAxisTitle,
+    parsedRows, groups, xAxisTitle, yAxisTitle, zAxisTitle, is3D,
     axisStyle, gridStyle, legendVisible,
     globalPointSize, globalPointOpacity,
     tooltipFontFamily, tooltipFontSize,
@@ -192,6 +235,8 @@ export default function ChartCanvas() {
   const offsetY = chartDimensions.offsetY;
 
   const handleChartPointerDown = useCallback((e: React.PointerEvent) => {
+    // 3D 模式下不拖拽图表（echarts-gl 处理旋转/缩放）
+    if (is3D) return;
     // 不拦截 resize 手柄的事件
     if ((e.target as HTMLElement).closest('.resize-handle')) return;
     if ((e.target as HTMLElement).closest('.custom-legend')) return;
@@ -202,9 +247,10 @@ export default function ChartCanvas() {
       startOffY: offsetY,
       moved: false,
     };
-  }, [offsetX, offsetY]);
+  }, [offsetX, offsetY, is3D]);
 
   useEffect(() => {
+    if (is3D) return; // 3D 模式不绑定拖拽事件
     const handleMove = (e: PointerEvent) => {
       if (!dragState.current) return;
       const dx = e.clientX - dragState.current.startX;
@@ -228,14 +274,21 @@ export default function ChartCanvas() {
       document.removeEventListener('pointermove', handleMove);
       document.removeEventListener('pointerup', handleUp);
     };
-  }, [setChartDimensions]);
+  }, [setChartDimensions, is3D]);
 
   const hasData = parsedRows.length > 0;
 
   return (
     <div
       className="chart-canvas-wrapper"
-      style={{ width: chartWidth, height: chartHeight, cursor: 'move' }}
+      style={{
+        width: chartWidth,
+        height: chartHeight,
+        cursor: is3D ? 'default' : 'move',
+        background: background === 'transparent' ? 'transparent' : '#ffffff',
+        border: background === 'transparent' ? 'none' : '1px solid #ddd',
+        boxShadow: background === 'transparent' ? 'none' : '0 2px 8px rgba(0, 0, 0, 0.06)',
+      }}
       onPointerDown={handleChartPointerDown}
     >
       {!hasData && (

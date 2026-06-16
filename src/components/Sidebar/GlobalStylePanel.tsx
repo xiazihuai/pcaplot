@@ -1,7 +1,9 @@
 // 全局样式设置面板
 import { useStyleStore } from '../../stores/useStyleStore';
+import { useDataStore } from '../../stores/useDataStore';
 
 export default function GlobalStylePanel() {
+  const is3D = useDataStore(s => s.is3D);
   const globalPointSize = useStyleStore(s => s.globalPointSize);
   const globalPointOpacity = useStyleStore(s => s.globalPointOpacity);
   const setGlobalPointSize = useStyleStore(s => s.setGlobalPointSize);
@@ -154,37 +156,39 @@ export default function GlobalStylePanel() {
         </div>
       </div>
 
-      {/* 网格线 */}
-      <div className="sidebar-section">
-        <h4>网格线</h4>
-        <div className="sidebar-row">
-          <label>显示</label>
-          <input type="checkbox" checked={gridStyle.show}
-            onChange={e => updateGridStyle({ show: e.target.checked })} />
+      {/* 网格线（3D 模式不支持） */}
+      {!is3D && (
+        <div className="sidebar-section">
+          <h4>网格线</h4>
+          <div className="sidebar-row">
+            <label>显示</label>
+            <input type="checkbox" checked={gridStyle.show}
+              onChange={e => updateGridStyle({ show: e.target.checked })} />
+          </div>
+          {gridStyle.show && (
+            <>
+              <div className="sidebar-row">
+                <label>类型</label>
+                <select value={gridStyle.type}
+                  onChange={e => updateGridStyle({ type: e.target.value as 'solid' | 'dashed' | 'none' })}>
+                  <option value="solid">实线</option>
+                  <option value="dashed">虚线</option>
+                </select>
+              </div>
+              <div className="sidebar-row">
+                <label>颜色</label>
+                <input type="color" value={gridStyle.color}
+                  onChange={e => updateGridStyle({ color: e.target.value })} />
+              </div>
+              <div className="sidebar-row">
+                <label>宽度</label>
+                <input type="number" min={0.5} max={3} step={0.5} value={gridStyle.width}
+                  onChange={e => updateGridStyle({ width: Number(e.target.value) })} />
+              </div>
+            </>
+          )}
         </div>
-        {gridStyle.show && (
-          <>
-            <div className="sidebar-row">
-              <label>类型</label>
-              <select value={gridStyle.type}
-                onChange={e => updateGridStyle({ type: e.target.value as 'solid' | 'dashed' | 'none' })}>
-                <option value="solid">实线</option>
-                <option value="dashed">虚线</option>
-              </select>
-            </div>
-            <div className="sidebar-row">
-              <label>颜色</label>
-              <input type="color" value={gridStyle.color}
-                onChange={e => updateGridStyle({ color: e.target.value })} />
-            </div>
-            <div className="sidebar-row">
-              <label>宽度</label>
-              <input type="number" min={0.5} max={3} step={0.5} value={gridStyle.width}
-                onChange={e => updateGridStyle({ width: Number(e.target.value) })} />
-            </div>
-          </>
-        )}
-      </div>
+      )}
 
       {/* 背景 */}
       <div className="sidebar-section">

@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { useDataStore } from '../../stores/useDataStore';
 import { useStyleStore } from '../../stores/useStyleStore';
 import { useUIStore } from '../../stores/useUIStore';
-import { getShapeById, getAllShapes } from '../../services/shapeDefinitions';
+import { getShapeById, getAllShapes, get3DShapeFor2DId, getAll3DShapes, map3DShapeTo2DId } from '../../services/shapeDefinitions';
 import { COLOR_SCHEMES } from '../../services/colorSchemes';
 import type { ColorSchemeId } from '../../services/colorSchemes';
 
 export default function LayersPanel() {
   const groups = useDataStore(s => s.groups);
   const parsedRows = useDataStore(s => s.parsedRows);
+  const is3D = useDataStore(s => s.is3D);
   const updateGroupName = useDataStore(s => s.updateGroupName);
 
   const activeColorSchemeId = useStyleStore(s => s.activeColorSchemeId);
@@ -86,14 +87,18 @@ export default function LayersPanel() {
           const effectiveSize = sizeOverride !== undefined && sizeOverride !== -1 ? sizeOverride : globalPointSize;
           const opacityOverride = groupOpacityOverrides[group.name];
           const effectiveOpacity = opacityOverride !== undefined && opacityOverride !== -1 ? opacityOverride : globalPointOpacity;
-          const shapeDef = getShapeById(effectiveShape);
+          // 3D 模式下使用映射后的 3D 形状信息展示
+          const shapeDef = is3D ? get3DShapeFor2DId(effectiveShape) : getShapeById(effectiveShape);
+          const shapeIconSVG = is3D
+            ? ((shapeDef as unknown as { iconSVG?: string })?.iconSVG ?? '')
+            : ((shapeDef as unknown as { iconSVG?: string })?.iconSVG ?? '');
           const isRenaming = renamingGroup === group.name;
 
           return (
             <div key={group.name} className="group-item">
               <div className="group-item-header">
                 <span className="shape-icon" style={{ color: effectiveColor }} dangerouslySetInnerHTML={{
-                  __html: `<svg width="14" height="14" viewBox="0 0 16 16"><g fill="${effectiveColor}">${shapeDef?.iconSVG ?? ''}</g></svg>`
+                  __html: `<svg width="14" height="14" viewBox="0 0 16 16"><g fill="${effectiveColor}">${shapeIconSVG}</g></svg>`
                 }} />
                 {isRenaming ? (
                   <input
@@ -125,13 +130,28 @@ export default function LayersPanel() {
                 <input type="color" value={effectiveColor}
                   onChange={e => setGroupColorOverride(group.name, e.target.value)} title="修改颜色" />
                 <label>形状:</label>
-                <select value={effectiveShape}
-                  onChange={e => setGroupShapeOverride(group.name, Number(e.target.value))}
-                  style={{ width: 56, fontSize: 11 }} title="修改形状">
-                  {getAllShapes().map(s => (
-                    <option key={s.id} value={s.id}>{s.nameCN}</option>
-                  ))}
-                </select>
+                {is3D ? (
+                  <select
+                    value={get3DShapeFor2DId(effectiveShape)?.id ?? 1}
+                    onChange={e => {
+                      const id3D = Number(e.target.value);
+                      const id2D = map3DShapeTo2DId(id3D);
+                      setGroupShapeOverride(group.name, id2D);
+                    }}
+                    style={{ width: 62, fontSize: 11 }} title="修改形状(3D)">
+                    {getAll3DShapes().map(s => (
+                      <option key={s.id} value={s.id}>{s.nameCN}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <select value={effectiveShape}
+                    onChange={e => setGroupShapeOverride(group.name, Number(e.target.value))}
+                    style={{ width: 56, fontSize: 11 }} title="修改形状">
+                    {getAllShapes().map(s => (
+                      <option key={s.id} value={s.id}>{s.nameCN}</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="group-item-controls" style={{ marginTop: 3 }}>
                 <label>大小:</label>

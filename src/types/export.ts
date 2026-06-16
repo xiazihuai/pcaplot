@@ -16,6 +16,7 @@ export interface ExportDataRow {
   groupName: string;
   pc1: number;
   pc2: number;
+  pc3: number;
   color: string;
   shape: number;
   size: number;
@@ -32,9 +33,12 @@ export interface PcaStyleJSON {
       groupName: string;
       pc1: number;
       pc2: number;
+      pc3: number;
     }[];
     xAxisTitle: string;
     yAxisTitle: string;
+    zAxisTitle: string;
+    is3D: boolean;
   };
   style: Record<string, unknown>; // 完整 StyleStore 快照
 }

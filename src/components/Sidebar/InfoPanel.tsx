@@ -55,6 +55,7 @@ export default function InfoPanel() {
                       groupName: r.groupName,
                       pc1: r.pc1,
                       pc2: r.pc2,
+                      pc3: r.pc3,
                       color,
                       shape: group?.shape ?? 1,
                     })}
@@ -173,7 +174,7 @@ export default function InfoPanel() {
                 {p.groupName}
               </div>
               <div style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }}>
-                PC1: {p.pc1.toFixed(4)} | PC2: {p.pc2.toFixed(4)}
+                PC1: {p.pc1.toFixed(4)} | PC2: {p.pc2.toFixed(4)}{p.pc3 !== 0 ? ` | PC3: ${p.pc3.toFixed(4)}` : ''}
               </div>
             </div>
           ))}

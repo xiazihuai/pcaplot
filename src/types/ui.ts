@@ -7,6 +7,7 @@ export interface SelectedPointInfo {
   groupName: string;
   pc1: number;
   pc2: number;
+  pc3: number;
   color: string;
   shape: number;
 }

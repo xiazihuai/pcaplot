@@ -3,11 +3,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useDataStore } from '../../stores/useDataStore';
 import { useStyleStore } from '../../stores/useStyleStore';
 import { useUIStore } from '../../stores/useUIStore';
-import { getShapeById } from '../../services/shapeDefinitions';
+import { getShapeById, get3DShapeFor2DId } from '../../services/shapeDefinitions';
 import './CustomLegend.css';
 
 export default function CustomLegend() {
   const groups = useDataStore(s => s.groups);
+  const is3D = useDataStore(s => s.is3D);
   const legendStyle = useStyleStore(s => s.legendStyle);
   const visible = legendStyle.visible;
   const legendPosition = legendStyle.position;
@@ -105,13 +106,15 @@ export default function CustomLegend() {
       {groups.map(group => {
         const effectiveColor = groupColorOverrides[group.name] ?? group.color;
         const effectiveShape = groupShapeOverrides[group.name] ?? group.shape;
-        const shapeDef = getShapeById(effectiveShape);
+        const shapeIconSVG = is3D
+          ? get3DShapeFor2DId(effectiveShape).iconSVG
+          : (getShapeById(effectiveShape)?.iconSVG ?? '');
         const isRenaming = renamingGroup === group.name;
 
         return (
           <div key={group.name} className="legend-item">
             <svg width="14" height="14" viewBox="0 0 16 16" style={{ flexShrink: 0, color: effectiveColor }}>
-              <g fill={effectiveColor} dangerouslySetInnerHTML={{ __html: shapeDef?.iconSVG ?? '' }} />
+              <g fill={effectiveColor} dangerouslySetInnerHTML={{ __html: shapeIconSVG }} />
             </svg>
 
             {isRenaming ? (

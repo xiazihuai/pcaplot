@@ -5,6 +5,8 @@ import { useDataStore } from '../../stores/useDataStore';
 export default function AxesPanel() {
   const xAxisTitle = useDataStore(s => s.xAxisTitle);
   const yAxisTitle = useDataStore(s => s.yAxisTitle);
+  const zAxisTitle = useDataStore(s => s.zAxisTitle);
+  const is3D = useDataStore(s => s.is3D);
   const setAxisTitles = useDataStore(s => s.setAxisTitles);
   const axisStyle = useStyleStore(s => s.axisStyle);
   const updateAxisStyle = useStyleStore(s => s.updateAxisStyle);
@@ -31,10 +33,29 @@ export default function AxesPanel() {
             style={{ width: 120, fontSize: 13 }}
           />
         </div>
+        {is3D && (
+          <div className="sidebar-row">
+            <label>Z轴:</label>
+            <input
+              type="text"
+              value={zAxisTitle}
+              onChange={e => setAxisTitles({ z: e.target.value })}
+              style={{ width: 120, fontSize: 13 }}
+            />
+          </div>
+        )}
       </div>
 
-      <div className="sidebar-section">
-        <h4>轴线样式</h4>
+      {is3D ? (
+        <div className="sidebar-section">
+          <p style={{ color: '#999', fontSize: 12, fontStyle: 'italic' }}>
+            3D 模式下坐标轴样式由场景视图控制，暂不支持更多自定义选项。
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="sidebar-section">
+            <h4>轴线样式</h4>
         <div className="sidebar-row">
           <label>线宽</label>
           <input
@@ -142,6 +163,8 @@ export default function AxesPanel() {
           />
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

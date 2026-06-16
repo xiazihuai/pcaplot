@@ -56,6 +56,7 @@ async function importFromJSON(text: string): Promise<void> {
         groupName: r.groupName,
         pc1: r.pc1,
         pc2: r.pc2,
+        pc3: r.pc3 ?? 0,
       })),
       groups: uniqueGroups.map((name, i) => ({
         name,
@@ -69,6 +70,8 @@ async function importFromJSON(text: string): Promise<void> {
       })),
       xAxisTitle: json.data.xAxisTitle || 'PC1',
       yAxisTitle: json.data.yAxisTitle || 'PC2',
+      zAxisTitle: json.data.zAxisTitle || 'PC3',
+      is3D: json.data.is3D ?? false,
       fileName: '(导入的样式)',
     });
   }
@@ -124,6 +127,8 @@ async function importFromStyledCSV(text: string): Promise<void> {
       rows: [],
       xAxisTitle: 'PC1',
       yAxisTitle: 'PC2',
+      zAxisTitle: 'PC3',
+      is3D: false,
     },
     style: styleData,
   };

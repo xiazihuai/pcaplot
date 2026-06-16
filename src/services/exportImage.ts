@@ -30,15 +30,18 @@ export async function exportImage(
   const canvasEl = document.querySelector('.pca-canvas') as HTMLElement;
   if (!canvasEl) throw new Error('未找到画布元素');
 
+  const is3D = useDataStore.getState().is3D;
+  const background = useStyleStore.getState().background;
+  const chartTitle = useStyleStore.getState().chartTitle;
   const pixelRatio = dpi / 72;
 
   if (format === 'svg') {
-    await exportSVG(instance, canvasEl, pixelRatio, includeLegend);
+    await exportSVG(instance, canvasEl, pixelRatio, includeLegend, is3D, background, chartTitle);
     return;
   }
 
   // PNG / JPEG: Canvas 合成
-  await exportRaster(instance, canvasEl, format, pixelRatio, includeLegend);
+  await exportRaster(instance, canvasEl, format, pixelRatio, includeLegend, is3D, background, chartTitle);
 }
 
 /**
@@ -50,17 +53,37 @@ async function exportRaster(
   format: 'png' | 'jpeg',
   pixelRatio: number,
   includeLegend: boolean,
+  is3D: boolean = false,
+  background: 'white' | 'transparent' = 'white',
+  chartTitle?: { show: boolean; text: string; fontFamily: string; fontSize: number; bold: boolean; color: string },
 ): Promise<void> {
   const canvasRect = canvasEl.getBoundingClientRect();
   const canvasW = Math.round(canvasRect.width * pixelRatio);
   const canvasH = Math.round(canvasRect.height * pixelRatio);
 
-  // 1. 从 ECharts 获取图表图像（透明背景，避免覆盖网格）
-  const chartDataUrl = instance.getDataURL({
-    type: 'png',
-    pixelRatio,
-    backgroundColor: 'transparent',
-  });
+  // 1. 获取图表图像
+  let chartDataUrl: string;
+  if (is3D) {
+    // 3D WebGL 模式：直接从 canvas 元素抓取
+    const chartCanvas = document.querySelector('.chart-container canvas') as HTMLCanvasElement | null;
+    if (chartCanvas) {
+      chartDataUrl = chartCanvas.toDataURL('image/png');
+    } else {
+      // 回退方案
+      chartDataUrl = instance.getDataURL({
+        type: 'png',
+        pixelRatio,
+        backgroundColor: 'transparent',
+      });
+    }
+  } else {
+    // 2D Canvas 模式：使用 ECharts API
+    chartDataUrl = instance.getDataURL({
+      type: 'png',
+      pixelRatio,
+      backgroundColor: 'transparent',
+    });
+  }
   const chartImg = await loadImage(chartDataUrl);
 
   // 计算图表在画布中的位置
@@ -68,6 +91,8 @@ async function exportRaster(
   const chartRect = chartWrapper?.getBoundingClientRect();
   const chartX = chartRect ? Math.round((chartRect.left - canvasRect.left) * pixelRatio) : 0;
   const chartY = chartRect ? Math.round((chartRect.top - canvasRect.top) * pixelRatio) : 0;
+  const cw = chartRect ? Math.round(chartRect.width * pixelRatio) : 0;
+  const ch = chartRect ? Math.round(chartRect.height * pixelRatio) : 0;
 
   // 2. 创建画布
   const canvas = document.createElement('canvas');
@@ -81,10 +106,8 @@ async function exportRaster(
     ctx.fillRect(0, 0, canvasW, canvasH);
   }
 
-  // 4. 绘制图表阴影和边框
-  if (chartWrapper) {
-    const cw = Math.round(chartRect!.width * pixelRatio);
-    const ch = Math.round(chartRect!.height * pixelRatio);
+  // 4. 绘制图表阴影和边框（透明背景时跳过）
+  if (chartWrapper && background !== 'transparent') {
     const br = 4 * pixelRatio;
 
     // 阴影
@@ -110,8 +133,22 @@ async function exportRaster(
     ctx.stroke();
   }
 
-  // 5. 绘制图表
-  ctx.drawImage(chartImg, chartX, chartY);
+  // 5. 绘制图表（指定目标宽高，确保 WebGL canvas 被正确缩放到输出尺寸）
+  ctx.drawImage(chartImg, chartX, chartY, cw, ch);
+
+  // 5b. 3D 模式下补充标题（echarts-gl WebGL canvas 可能不含标题）
+  if (is3D && chartTitle?.show && chartTitle.text) {
+    const titleFontSize = chartTitle.fontSize * pixelRatio;
+    const titleFontFamily = chartTitle.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'sans-serif';
+    ctx.fillStyle = chartTitle.color || '#333';
+    ctx.font = `${chartTitle.bold ? 'bold' : 'normal'} ${titleFontSize}px ${titleFontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const titleX = chartX + cw / 2;
+    const titleY = chartY + 5 * pixelRatio;
+    ctx.fillText(chartTitle.text, titleX, titleY);
+    ctx.textAlign = 'start';
+  }
 
   // 6. 绘制图例
   if (includeLegend) {
@@ -137,17 +174,35 @@ async function exportSVG(
   canvasEl: HTMLElement,
   pixelRatio: number,
   includeLegend: boolean,
+  is3D: boolean = false,
+  background: 'white' | 'transparent' = 'white',
+  chartTitle?: { show: boolean; text: string; fontFamily: string; fontSize: number; bold: boolean; color: string },
 ): Promise<void> {
   const canvasRect = canvasEl.getBoundingClientRect();
   const canvasW = Math.round(canvasRect.width * pixelRatio);
   const canvasH = Math.round(canvasRect.height * pixelRatio);
 
   // 1. 获取图表图像
-  const chartDataUrl = instance.getDataURL({
-    type: 'png',
-    pixelRatio,
-    backgroundColor: 'transparent',
-  });
+  let chartDataUrl: string;
+  if (is3D) {
+    // 3D WebGL 模式：直接从 canvas 元素抓取
+    const chartCanvas = document.querySelector('.chart-container canvas') as HTMLCanvasElement | null;
+    if (chartCanvas) {
+      chartDataUrl = chartCanvas.toDataURL('image/png');
+    } else {
+      chartDataUrl = instance.getDataURL({
+        type: 'png',
+        pixelRatio,
+        backgroundColor: 'transparent',
+      });
+    }
+  } else {
+    chartDataUrl = instance.getDataURL({
+      type: 'png',
+      pixelRatio,
+      backgroundColor: 'transparent',
+    });
+  }
 
   // 计算图表在画布中的位置
   const chartWrapper = document.querySelector('.chart-canvas-wrapper') as HTMLElement | null;
@@ -159,21 +214,32 @@ async function exportSVG(
   let svg = '';
   svg += `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}" viewBox="0 0 ${canvasW} ${canvasH}">\n`;
 
-  // 3. 图表区域（阴影 + 白色背景 + 边框，画布背景透明）
+  // 3. 图表区域（阴影 + 白色背景 + 边框，透明背景时仅嵌入图表图像）
   if (chartWrapper && chartRect) {
     const cw = Math.round(chartRect.width * pixelRatio);
     const ch = Math.round(chartRect.height * pixelRatio);
     const br = 4 * pixelRatio;
 
-    // 阴影滤镜
-    svg += `  <defs>
+    if (background !== 'transparent') {
+      // 阴影滤镜
+      svg += `  <defs>
     <filter id="chartShadow" x="-5%" y="-5%" width="115%" height="115%">
       <feDropShadow dx="0" dy="${2 * pixelRatio}" stdDeviation="${4 * pixelRatio}" flood-color="rgba(0,0,0,0.06)" />
     </filter>
   </defs>\n`;
-    svg += `  <rect x="${chartX}" y="${chartY}" width="${cw}" height="${ch}" rx="${br}" ry="${br}" fill="#ffffff" stroke="#dddddd" stroke-width="${1 * pixelRatio}" filter="url(#chartShadow)" />\n`;
+      svg += `  <rect x="${chartX}" y="${chartY}" width="${cw}" height="${ch}" rx="${br}" ry="${br}" fill="#ffffff" stroke="#dddddd" stroke-width="${1 * pixelRatio}" filter="url(#chartShadow)" />\n`;
+    }
     // 图表图像
     svg += `  <image href="${chartDataUrl}" x="${chartX}" y="${chartY}" width="${cw}" height="${ch}" />\n`;
+
+    // 3D 模式下补充标题（echarts-gl WebGL canvas 可能不含标题）
+    if (is3D && chartTitle?.show && chartTitle.text) {
+      const titleFontSize = chartTitle.fontSize * pixelRatio;
+      const titleFontFamily = chartTitle.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'sans-serif';
+      const titleX = chartX + cw / 2;
+      const titleY = chartY + 5 * pixelRatio;
+      svg += `  <text x="${titleX}" y="${titleY}" font-family="${escapeXml(titleFontFamily)}" font-size="${titleFontSize}" font-weight="${chartTitle.bold ? 'bold' : 'normal'}" fill="${escapeXml(chartTitle.color || '#333')}" text-anchor="middle">${escapeXml(chartTitle.text)}</text>\n`;
+    }
   }
 
   // 6. 图例
@@ -282,8 +348,8 @@ function drawLegendOnCanvas(
       const textRect = textEl.getBoundingClientRect();
       const textStyles = getComputedStyle(textEl);
       const textX = (textRect.left - canvasRect.left) * pixelRatio;
-      // Canvas baseline 对齐 DOM 底部
-      const textY = (textRect.bottom - canvasRect.top) * pixelRatio - 2 * pixelRatio;
+      // 使用垂直中心与图标对齐（与 flex align-items: center 一致）
+      const textCy = ((textRect.top + textRect.bottom) / 2 - canvasRect.top) * pixelRatio;
       const fontSize = parseFloat(textStyles.fontSize) * pixelRatio;
       const fontFamily = textStyles.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'sans-serif';
       const fontWeight = textStyles.fontWeight || 'normal';
@@ -292,7 +358,9 @@ function drawLegendOnCanvas(
 
       ctx.fillStyle = textColor;
       ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
-      ctx.fillText(displayName, textX, textY);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(displayName, textX, textCy);
+      ctx.textBaseline = 'alphabetic';
     }
   }
 }
@@ -456,14 +524,15 @@ function buildLegendAsSVG(
       const textRect = textEl.getBoundingClientRect();
       const textStyles = getComputedStyle(textEl);
       const textX = (textRect.left - canvasRect.left) * pixelRatio;
-      const textY = (textRect.bottom - canvasRect.top) * pixelRatio - 2 * pixelRatio;
+      // 使用垂直中心与图标对齐（与 flex align-items: center 一致）
+      const textCY = ((textRect.top + textRect.bottom) / 2 - canvasRect.top) * pixelRatio;
       const fontSize = parseFloat(textStyles.fontSize) * pixelRatio;
       const fontFamily = textStyles.fontFamily?.split(',')[0]?.replace(/['"]/g, '') || 'sans-serif';
       const fontWeight = textStyles.fontWeight || 'normal';
       const fontStyle = textStyles.fontStyle || 'normal';
       const textColor = textStyles.color || '#333333';
 
-      svg += `  <text x="${textX}" y="${textY}" font-family="${escapeXml(fontFamily)}" font-size="${fontSize}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="${escapeXml(textColor)}">${escapeXml(displayName)}</text>\n`;
+      svg += `  <text x="${textX}" y="${textCY}" font-family="${escapeXml(fontFamily)}" font-size="${fontSize}" font-weight="${fontWeight}" font-style="${fontStyle}" fill="${escapeXml(textColor)}" dominant-baseline="central">${escapeXml(displayName)}</text>\n`;
     }
   }
 

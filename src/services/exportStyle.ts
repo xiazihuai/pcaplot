@@ -20,9 +20,12 @@ function buildStyleJSON(): PcaStyleJSON {
         groupName: r.groupName,
         pc1: r.pc1,
         pc2: r.pc2,
+        pc3: r.pc3,
       })),
       xAxisTitle: dataState.xAxisTitle,
       yAxisTitle: dataState.yAxisTitle,
+      zAxisTitle: dataState.zAxisTitle,
+      is3D: dataState.is3D,
     },
     style: styleState.exportStyleSnapshot(),
   };
@@ -51,10 +54,10 @@ export async function exportStyleAsCSV(): Promise<void> {
   for (const sl of styleLines) {
     lines.push(`# STYLE: ${sl}`);
   }
-  lines.push('SampleName,Group,PC1,PC2');
+  lines.push('SampleName,Group,PC1,PC2,PC3');
 
   for (const row of json.data.rows) {
-    lines.push(`${row.sampleName},${row.groupName},${row.pc1},${row.pc2}`);
+    lines.push(`${row.sampleName},${row.groupName},${row.pc1},${row.pc2},${row.pc3}`);
   }
 
   const text = lines.join('\n');
